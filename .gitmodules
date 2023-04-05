@@ -1,0 +1,3 @@
+[submodule "python-customcmd"]
+	path = python-customcmd
+	url = https://github.com/Kovalit31/python-customcmd
