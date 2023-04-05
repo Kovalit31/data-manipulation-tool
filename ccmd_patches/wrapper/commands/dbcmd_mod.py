@@ -1,6 +1,6 @@
-from .programm.python.tools import functions, pathutil
-from .programm.python.locale import locale, tokens
-from .programm.python.core import config
+from ...tools import functions, pathutil
+from ...locale import locale, tokens
+from ...core import config
 
 import os
 

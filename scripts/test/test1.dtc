@@ -1,3 +1,0 @@
-export EX=exc
-echo $EX
-exit

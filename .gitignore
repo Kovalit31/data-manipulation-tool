@@ -127,4 +127,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-programm/my.csv
+
+# Project specific
+python-ccmd-patched/
