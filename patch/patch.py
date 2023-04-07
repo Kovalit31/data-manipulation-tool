@@ -675,7 +675,7 @@ class PatchSet(object):
       source_null = False
       target_null = False
       
-      if p.type in (HG, GIT):
+      if p.type in (HG, GIT): # Partialy dead!
         # TODO: figure out how to deal with /dev/null entries
         debug("stripping a/ and b/ prefixes")
         if p.source != '/dev/null':
@@ -683,16 +683,22 @@ class PatchSet(object):
             warning("invalid source filename")
           else:
             p.source = p.source[2:]
-        else:
-          source_null = True
         if p.target != '/dev/null':
           if not p.target.startswith(b"b/"):
             warning("invalid target filename")
           else:
             p.target = p.target[2:]
-        else:
-          target_null = True
-
+      if p.source == b'/dev/null':
+        print(True)
+        source_null = True
+      else:
+        print(False)
+      if p.target == b'/dev/null':
+        print(True)
+        target_null = True
+      else:
+        print(False)
+      print(p.source, p.target)
       p.source = xnormpath(p.source) if not source_null else b'/dev/null'
       p.target = xnormpath(p.target) if not target_null else b'/dev/null'
 
@@ -782,39 +788,30 @@ class PatchSet(object):
   
   def findfile(self, old, new):
     """ return name of file to be patched or None """
-    if exists(old):
+    old_null = old.startswith(b'/dev/null')
+    new_null = new.startswith(b'/dev/null')
+    if exists(old) and not old_null:
       return old
-    elif exists(new):
+    elif exists(new) and not new_null:
       return new
     else:
       # [w] Google Code generates broken patches with its online editor
-      debug("May be broken patch from Google Code, stripping prefixes..")
-      if old.startswith(b'a/') and new.startswith(b'b/'):
-        print("Is it correct?")
-        old, new = old[2:], new[2:]
-        debug("   %s" % old)
-        debug("   %s" % new)
-        if exists(old):
-          return old
-        elif exists(new):
-          return new
-      elif old.startswith(b'/dev/null') or new.startswith(b'/dev/null'):
-        print(old, new)
-        if old.startswith(b'/dev/null'):
-          print("Return new")
-          # print(new[2:].decode("utf-8"))
-          # with open(pathlib.Path(pathlib.PureWindowsPath(new[2:].decode('utf-8'))), "x") as file:
-          #   file.write("\n")
-          #   file.close()
-          return new[2:]
-        # elif new.startswith(b'/dev/null'):
-        #   print("Return old")
-        #   return None if not exists(old[2:]) else old[2:] We don't need to patch old file!
-        else:
-          print("Return nothing")
-          return None
-      else:
-        return None
+      debug("May be a and b not stripped; stripping prefixes..")
+      old = old[2:] if old.startswith(b'a/') or old.startswith(b'b/') else old
+      new = new[2:] if new.startswith(b'b/') or new.startswith(b'a/') else new 
+      debug("   %s" % old)
+      debug("   %s" % new)
+      old_null = old.startswith(b'/dev/null')
+      new_null = new.startswith(b'/dev/null')
+      if exists(old) and not old_null:
+        return old
+      elif exists(new) and not new_null:
+        return new
+      elif old_null:
+        return new
+      elif new_null:
+        return old
+      return None
   
   def apply(self, strip=0, root=None):
     """ Apply parsed patch, optionally stripping leading components
@@ -851,7 +848,7 @@ class PatchSet(object):
 
       filename = self.findfile(old, new)
       
-      if not filename:
+      if not filename and not (old.startswith(b'/dev/null') or new.startswith(b'/dev/null')):
           warning("source/target file does not exist:\n  --- %s\n  +++ %s" % (old, new))
           errors += 1
           continue
@@ -863,7 +860,7 @@ class PatchSet(object):
       # [ ] check absolute paths security here
       debug("processing %d/%d:\t %s" % (i+1, total, filename))
 
-      # Write to output file, if source is /dev/null (it's not present)
+      # Write to output file, if source/target is /dev/null (it's not present)
       remmaped = [] 
       is_negative = False
       if not isfile(filename):
@@ -879,7 +876,7 @@ class PatchSet(object):
         to_write = "".join(remmaped)
         if is_negative:
           continue
-        fw = open(pathlib.Path(pathlib.PureWindowsPath(filename.decode('utf-8'))), 'w', encoding='utf-8')
+        fw = open(pathlib.Path(filename.decode('utf-8')), 'w', encoding='utf-8')
         fw.write(to_write)
         fw.close()
         debug("Successfully created unpatchable file!")
