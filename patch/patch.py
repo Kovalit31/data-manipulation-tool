@@ -30,9 +30,6 @@ import posixpath
 import shutil
 import sys
 
-
-PY3K = sys.version_info >= (3, 0)
-
 compat_next = lambda gen: gen.__next__()
 
 def tostr(b):
@@ -454,7 +451,7 @@ class PatchSet(object):
             # attempt to restart from this second line
           re_filename = b"^--- ([^\t]+)"
           match = re.match(re_filename, line)
-          # todo: support spaces in filenames
+          # TODO: support spaces in filenames
           if match:
             srcname = match.group(1).strip()
           else:
@@ -674,6 +671,10 @@ class PatchSet(object):
         debug("    patch type = " + p.type)
         debug("    source = " +str(p.source))
         debug("    target = " + str(p.target))
+        
+      source_null = False
+      target_null = False
+      
       if p.type in (HG, GIT):
         # TODO: figure out how to deal with /dev/null entries
         debug("stripping a/ and b/ prefixes")
@@ -682,24 +683,28 @@ class PatchSet(object):
             warning("invalid source filename")
           else:
             p.source = p.source[2:]
+        else:
+          source_null = True
         if p.target != '/dev/null':
           if not p.target.startswith(b"b/"):
             warning("invalid target filename")
           else:
             p.target = p.target[2:]
+        else:
+          target_null = True
 
-      p.source = xnormpath(p.source)
-      p.target = xnormpath(p.target)
+      p.source = xnormpath(p.source) if not source_null else b'/dev/null'
+      p.target = xnormpath(p.target) if not target_null else b'/dev/null'
 
       sep = b'/'  # sep value can be hardcoded, but it looks nice this way
 
       # references to parent are not allowed
-      if p.source.startswith(b".." + sep):
+      if p.source.startswith(b".." + sep) and not source_null:
         warning("error: stripping parent path for source file patch no.%d" % (i+1))
         self.warnings += 1
         while p.source.startswith(b".." + sep):
           p.source = p.source.partition(sep)[2]
-      if p.target.startswith(b".." + sep):
+      if p.target.startswith(b".." + sep) and not target_null:
         warning("error: stripping parent path for target file patch no.%d" % (i+1))
         self.warnings += 1
         while p.target.startswith(b".." + sep):
@@ -708,12 +713,12 @@ class PatchSet(object):
       if xisabs(p.source) or xisabs(p.target):
         warning("error: absolute paths are not allowed - file no.%d" % (i+1))
         self.warnings += 1
-        if xisabs(p.source) and not p.source == b'/dev/null':
-          warning("stripping absolute path from source name '%s'" % p.source)
-          p.source = xstrip(p.source)
-        if xisabs(p.target):
-          warning("stripping absolute path from target name '%s'" % p.target)
-          p.target = xstrip(p.target)
+      if xisabs(p.source) and not source_null:
+        warning("stripping absolute path from source name '%s'" % p.source)
+        p.source = xstrip(p.source)
+      if xisabs(p.target) and not target_null:
+        warning("stripping absolute path from target name '%s'" % p.target)
+        p.target = xstrip(p.target)
     
       self.items[i].source = p.source
       self.items[i].target = p.target

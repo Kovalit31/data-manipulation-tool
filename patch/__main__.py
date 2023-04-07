@@ -9,7 +9,8 @@ ccmd_orig_dest = os.path.join(PATH, "customcmd-original")
 ccmd_out = os.path.join(PATH, "customcmd-patch")
 
 def main():
-    shutil.rmtree(ccmd_out)
+    if os.path.exists(ccmd_out):
+        shutil.rmtree(ccmd_out)
     shutil.copytree(ccmd_orig, ccmd_out, dirs_exist_ok=True)
     patch.setdebug()
     patcher = patch.fromfile(ccmd_patch)
