@@ -1,7 +1,7 @@
-diff --git a/customcmd-original/__main__.py b/customcmd-patch/__main__.py
+diff --git a/customcmd-original/customcmd/__main__.py b/customcmd-patch/customcmd/__main__.py
 index e1146cb..692ed86 100644
---- a/customcmd-original/__main__.py
-+++ b/customcmd-patch/__main__.py
+--- a/customcmd-original/customcmd/__main__.py
++++ b/customcmd-patch/customcmd/__main__.py
 @@ -11,6 +11,7 @@ def main(args: list) -> None:
      loader.load_module(wrapper.commands.unix_like.echo, 'echo')
      loader.load_module(wrapper.commands.unix_like.cd, 'cd')
@@ -10,10 +10,129 @@ index e1146cb..692ed86 100644
      loader.load_module(wrapper.commands.unix_like.exit, 'exit', after=core.config.SYSEXIT)
      loader.load_module(wrapper.commands.bash_like.exec, 'exec', after=core.config.LOADFILE, unpack_output=True)
      loader.load_module(wrapper.commands.bash_like.read, 'read', after=core.config.EXPORTVAR, unpack_output=True)
-diff --git a/customcmd-original/locale/lang/en.po b/customcmd-patch/locale/lang/en.po
+diff --git a/customcmd-original/customcmd/core/__init__.py b/customcmd-patch/customcmd/core/__init__.py
+index d63bc18..77f74b2 100644
+--- a/customcmd-original/customcmd/core/__init__.py
++++ b/customcmd-patch/customcmd/core/__init__.py
+@@ -1 +1,3 @@
+ from . import config
++from . import tools
++from . import baseconfig
+diff --git a/customcmd-patch/customcmd/core/baseconfig.py b/customcmd-patch/customcmd/core/baseconfig.py
+new file mode 100644
+index 0000000..b3172e8
+--- /dev/null
++++ b/customcmd-patch/customcmd/core/baseconfig.py
+@@ -0,0 +1,13 @@
++import sys
++
++SIGNED = 0x0001
++UNSIGNED = 0x0000
++MAJORVERSION = 0x0001
++MINORVERSION = 0x0000
++DIR = 0x0100
++FILE = 0x0200
++_64BIT = sys.maxsize > 2 ** 32 - 1
++MAXLEN = 2 ** 32 - 1 if not _64BIT else 2 ** 64 - 1
++MAXNAMELEN = 2 ** 16 - 1
++MAXNAMEHEXLEN = len(str(MAXNAMELEN).encode().hex())
++MAXHEXLEN = len(str(MAXLEN).encode().hex())
+diff --git a/customcmd-original/customcmd/core/config.py b/customcmd-patch/customcmd/core/config.py
+index dfdb0f2..7fe3a30 100644
+--- a/customcmd-original/customcmd/core/config.py
++++ b/customcmd-patch/customcmd/core/config.py
+@@ -16,7 +16,6 @@ EXPORTVAR = 5
+ # Other
+ 
+ DEFAULT_LANG = "ru"
+-VERSION = 0x00000001
+ 
+ # Variable set
+ 
+diff --git a/customcmd-original/customcmd/locale/lang/c.po b/customcmd-patch/customcmd/locale/lang/c.po
+index d8292f6..cb7ac3a 100644
+--- a/customcmd-original/customcmd/locale/lang/c.po
++++ b/customcmd-patch/customcmd/locale/lang/c.po
+@@ -1,43 +1,53 @@
+-en
++ru
+ command.pause.title
+-Press enter to continue...
++Нажмите enter, чтобы продолжить...
+ error.file.read
+-Can't open file:
++Невозможно открыть файл:
+ error.syscode.unregistered
+-Unexpected syscode:
++Неожиданный системный код:
+ io.file.open.try
+-Trying to open file
++Попытка открыть файл
+ io.file.name.display
+-File:
++Файл:
+ error.path.notexists
+-No such file or directory:
++Нет такого файла или директории:
+ error.command.unexpected
+-Unexpected command:
++Неожиданная команда:
+ error.path.notdir
+-Path not a dir:
++Путь не является директорией:
+ error.path.notfile
+-Path not a file:
++Путь не является файлом:
+ error.export.variable
+-Can't set variable:
++Невозможно установить значение переменной:
+ command.exit.done
+-Exit expected!
++Выполнен выход!
+ error.command.read.fewargs
+-Few arguments for read!
++Недостаточно аргументов для команды read!
+ error.export.variable.isnull
+-Can't set variable, if it's null!
++Невозможно установить значение пустой переменной!
+ error.export.variable.littleinfo
+-Not enought or no info to set variable!
++Недостаточно или нет информации для установки переменной!
+ error.command.loadcmd.fewargs
+-Few arguments to load command file!
++Недостаточно аргументов для загрузки файла команд!
+ io.file.replace.action
+-This file will be replaced:
++Этот файл будет заменён:
+ user.action.continue
+-Continue [y]es/[n]o?
++Продолжить [д]а/[н]ет?
+ user.action.answer.yes
+-Yes
++Да
+ user.action.answer.no
+-No
++Нет
+ error.locale.nolang
+-No such language:
++Нет такого языка:
+ locale.reload.trigger
+-Locale reloaded!
++Язык установлен!
++db.all.setid.action
++Для создания новой БД надо указать её ИД. Ввведите его:
++db.all.sign.maybe
++БД могут быть подписаны
++db.all.sign.action
++Хотите ли вы подписать новую БД [д]а/[н]ет?
++db.all.sign.text.action
++Напишите текст для подписи ниже
++error.command.db.create.fewargs
++Недостаточно аргументов для создания базы данных!
+diff --git a/customcmd-original/customcmd/locale/lang/en.po b/customcmd-patch/customcmd/locale/lang/en.po
 index efa1fd7..1b12920 100644
---- a/customcmd-original/locale/lang/en.po
-+++ b/customcmd-patch/locale/lang/en.po
+--- a/customcmd-original/customcmd/locale/lang/en.po
++++ b/customcmd-patch/customcmd/locale/lang/en.po
 @@ -40,3 +40,13 @@ error.locale.nolang
  No such language:
  locale.reload.trigger
@@ -28,10 +147,10 @@ index efa1fd7..1b12920 100644
 +Please type the sign text above
 +error.command.db.create.fewargs
 +Few args for database create!
-diff --git a/customcmd-original/locale/lang/ru.po b/customcmd-patch/locale/lang/ru.po
+diff --git a/customcmd-original/customcmd/locale/lang/ru.po b/customcmd-patch/customcmd/locale/lang/ru.po
 index 78bdaa4..e3919a7 100644
---- a/customcmd-original/locale/lang/ru.po
-+++ b/customcmd-patch/locale/lang/ru.po
+--- a/customcmd-original/customcmd/locale/lang/ru.po
++++ b/customcmd-patch/customcmd/locale/lang/ru.po
 @@ -40,3 +40,13 @@ error.locale.nolang
  Нет такого языка:
  locale.reload.trigger
@@ -46,10 +165,10 @@ index 78bdaa4..e3919a7 100644
 +Напишите текст для подписи ниже
 +error.command.db.create.fewargs
 +Недостаточно аргументов для создания базы данных!
-diff --git a/customcmd-original/locale/tokens.py b/customcmd-patch/locale/tokens.py
+diff --git a/customcmd-original/customcmd/locale/tokens.py b/customcmd-patch/customcmd/locale/tokens.py
 index ddf887a..65f67ad 100644
---- a/customcmd-original/locale/tokens.py
-+++ b/customcmd-patch/locale/tokens.py
+--- a/customcmd-original/customcmd/locale/tokens.py
++++ b/customcmd-patch/customcmd/locale/tokens.py
 @@ -25,3 +25,8 @@ FEW_ARGS_ALL = "command.all.fewargs"
  FILE_WRITE_ERROR = "error.io.file.write"
  NO_SUCH_LOCALE = "error.locale.nolang"
@@ -59,25 +178,27 @@ index ddf887a..65f67ad 100644
 +CAN_SIGN_DB = "db.all.sign.maybe"
 +PLEASE_SET_SIGN_DATA = "db.all.sign.text.action"
 +FEW_ARGS_FOR_CREATEDB = "error.command.db.create.fewargs"
-diff --git a/customcmd-original/wrapper/commands/__init__.py b/customcmd-patch/wrapper/commands/__init__.py
+diff --git a/customcmd-original/customcmd/wrapper/commands/__init__.py b/customcmd-patch/customcmd/wrapper/commands/__init__.py
 index fd1b873..1ebf12f 100644
---- a/customcmd-original/wrapper/commands/__init__.py
-+++ b/customcmd-patch/wrapper/commands/__init__.py
+--- a/customcmd-original/customcmd/wrapper/commands/__init__.py
++++ b/customcmd-patch/customcmd/wrapper/commands/__init__.py
 @@ -1,2 +1,3 @@
  from . import unix_like
  from . import bash_like
 +from . import dbcmd_mod
-diff --git a/customcmd-patch/wrapper/commands/dbcmd_mod.py b/customcmd-patch/wrapper/commands/dbcmd_mod.py
+diff --git a/customcmd-patch/customcmd/wrapper/commands/dbcmd_mod.py b/customcmd-patch/customcmd/wrapper/commands/dbcmd_mod.py
 new file mode 100644
-index 0000000..2591f03
+index 0000000..4455959
 --- /dev/null
-+++ b/customcmd-patch/wrapper/commands/dbcmd_mod.py
-@@ -0,0 +1,127 @@
++++ b/customcmd-patch/customcmd/wrapper/commands/dbcmd_mod.py
+@@ -0,0 +1,150 @@
 +from ...tools import functions, pathutil
 +from ...locale import locale, tokens
-+from ...core import config
++from ...core import baseconfig
 +
 +import os
++
++
 +
 +def create_db(args: list):
 +    '''
@@ -92,32 +213,20 @@ index 0000000..2591f03
 +    if os.path.exists(path):
 +        if not functions.interactive(locale.get_by_token(tokens.NEED_REPLACE_FILE), locale.get_by_token(tokens.CONTINUE_QUESTION), _additional=args[0]):
 +            return
-+    db_id = args[1] if len(args) > 1 else input(f"{locale.get_by_token(tokens.NEED_FOR_DB_ID)} ")
-+    db_sign_persist = False
-+    db_sign_text = ""
-+    db_sign_line_count = 0
++    db_name = args[1] if len(args) > 1 else input(f"{locale.get_by_token(tokens.NEED_FOR_DB_ID)} ")
++    db_sign = ""
 +    if len(args) > 2:
-+        db_sign_text = " ".join(args[2:]).replace("\\", "\n")
-+        db_sign_line_count = len(db_sign_text.split("\n"))
-+        db_sign_persist = not db_sign_persist
++        db_sign = " ".join(args[2:]).replace("\\", "\n")
 +    else:
 +        if functions.interactive(locale.get_by_token(tokens.CAN_SIGN_DB), locale.get_by_token(tokens.IF_SIGN_DB)):
-+            db_sign_persist = not db_sign_persist
 +            functions.info(f"{locale.get_by_token(tokens.PLEASE_SET_SIGN_DATA)}")
 +            while True:
-+                db_sign_line_count += 1
-+                db_sign_text = functions.add_or_set_str(db_sign_text, input().strip().replace("\\", "\n"))
-+                if not db_sign_text.endswith("\n"):
++                db_sign = functions.add_or_set_str(db_sign, input().strip().replace("\\", "\n"))
++                if not db_sign.endswith("\n"):
 +                    break
-+    db_data = functions.add_to_string_with_nl(str(config.VERSION), config.DEFAULT_LANG)
-+    db_data = functions.add_to_string_with_nl(db_data, db_id)
-+    if db_sign_persist:
-+        db_data = functions.add_to_string_with_nl(db_data, "s")
-+        db_data = functions.add_to_string_with_nl(db_data, str(db_sign_line_count))
-+        db_data = functions.add_to_string_with_nl(db_data, db_sign_text)
-+    db_data = functions.add_to_string_with_nl(db_data, str(0))
-+    db_data = functions.add_to_string_with_nl(db_data, ".")
-+    db_data = functions.add_to_string_with_nl(db_data, str(0))
++    db_data = __create_dbdata(db_sign, db_name)
++    functions.write_to_file(path, db_data)
++    
 +
 +def create_vdb():
 +    pass
@@ -178,25 +287,58 @@ index 0000000..2591f03
 +def addkey():
 +    pass
 +
++def __create_dbdata(s: str, n: str):
++    dbdata = ""
++    sign = s.encode().hex() if s != "" and s != None and s.strip() != "" else None
++    name = n.encode().hex()
++    s_len = len(sign) if sign != None else 0
++    n_len = len(name)
++    root = ".".encode().hex()
++    if s_len > baseconfig.MAXLEN or n_len > baseconfig.MAXNAMELEN:
++        functions.info('', level='e')
++        return None
++    dbdata = functions.add_or_set_str(dbdata, "64" if baseconfig._64BIT else "32")
++    dbdata = functions.add_or_set_str(dbdata, str(baseconfig.MAJORVERSION).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_or_set_str(dbdata, str(baseconfig.MINORVERSION).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_or_set_str(dbdata, str(baseconfig.SIGNED).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else functions.add_or_set_str(dbdata, str(baseconfig.UNSIGNED).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_or_set_str(dbdata, str(s_len).encode().hex().zfill(baseconfig.MAXHEXLEN)) if sign != None else dbdata
++    dbdata = functions.add_or_set_str(dbdata, sign.zfill(baseconfig.MAXHEXLEN)) if sign != None else dbdata
++    dbdata = functions.add_or_set_str(dbdata, str(n_len).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_or_set_str(dbdata, name.zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_or_set_str(dbdata, str(baseconfig.DIR).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_or_set_str(dbdata, str(len(root)).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_or_set_str(dbdata, root.zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_or_set_str(dbdata, str(0).encode().hex().zfill(baseconfig.MAXHEXLEN))
++    return dbdata
 +
++def __parse(dbdata: str):
++    pass
 +'''
 +The comments
 +
++bits
 +version
 +s/u - signed/unsigned
 +if s, Sign len
 +if s, sign
++name len
 +db name
-+vdb count
-+<db structure without vdb>
++0x0001
 +.
 +num of files/dirs
 +d/f (dir/file)
-+__init__.py -|
++
++name len    -|
++lol.keys    -|
 +num of keys -| file
++keylen      -|
++key         -|
++
 +d/f (dir/file)
-+__pycache__       -| 
++name len          -|
++users             -| 
 +num of files/dirs -| dirs
-+dbend
++...
++0x0000
 +'''
 +
