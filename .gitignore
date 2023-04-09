@@ -132,3 +132,5 @@ dmypy.json
 customcmd-patch/
 customcmd-original/
 parse
+dbminimal
+super
