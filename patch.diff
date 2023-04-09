@@ -146,10 +146,10 @@ index fd1b873..1ebf12f 100644
 +from . import dbcmd_mod
 diff --git a/customcmd-patch/wrapper/commands/dbcmd_mod.py b/customcmd-patch/wrapper/commands/dbcmd_mod.py
 new file mode 100644
-index 0000000..e7e2dc5
+index 0000000..f951c38
 --- /dev/null
 +++ b/customcmd-patch/wrapper/commands/dbcmd_mod.py
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,208 @@
 +import math
 +from ...tools import functions, pathutil
 +from ...locale import locale, tokens
@@ -263,11 +263,11 @@ index 0000000..e7e2dc5
 +    # Signing
 +    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.SIGNED.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else functions.add_to_string_with_nl(dbdata, baseconfig.UNSIGNED.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    dbdata = functions.add_to_string_with_nl(dbdata, s_len.to_bytes().hex().zfill(baseconfig.MAXHEXLEN)) if sign != None else dbdata
-+    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil(s_len // baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else dbdata
++    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil((s_len + baseconfig.MAXHEXLEN - s_len % baseconfig.MAXHEXLEN) / baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else dbdata
 +    dbdata = functions.add_to_string_with_nl(dbdata, "0"*(baseconfig.MAXHEXLEN - s_len % baseconfig.MAXHEXLEN) + sign) if sign != None else dbdata
 +    # Database name
 +    dbdata = functions.add_to_string_with_nl(dbdata, n_len.to_bytes().hex().zfill(baseconfig.MAXHEXLEN))
-+    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil(n_len // baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil((n_len + baseconfig.MAXHEXLEN - n_len % baseconfig.MAXHEXLEN) / baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    dbdata = functions.add_to_string_with_nl(dbdata, "0"*(baseconfig.MAXHEXLEN - n_len % baseconfig.MAXHEXLEN) + name)
 +    # Directory sign (! here always)
 +    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.DIR.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
@@ -287,7 +287,10 @@ index 0000000..e7e2dc5
 +    _majorver_i = baseconfig.MAXNAMEHEXLEN + _sysbytes_i
 +    _minorver_i = baseconfig.MAXNAMEHEXLEN + _majorver_i
 +    _issigned_i = baseconfig.MAXNAMEHEXLEN + _minorver_i
-+    _sign_len_i = None
++    # If is signed
++    _sign_len_i = baseconfig.MAXHEXLEN + _issigned_i
++    _sign_chunks_i = baseconfig.MAXNAMEHEXLEN + _sign_len_i
++    _sign_chunk = baseconfig.MAXHEXLEN
 +    # Str variables
 +    _sysbytes = dbdata[:_sysbytes_i]
 +    _majorver = bytes.fromhex(dbdata[_sysbytes_i:_majorver_i])
@@ -297,11 +300,33 @@ index 0000000..e7e2dc5
 +    majorver = int.from_bytes(_majorver)
 +    minorver = int.from_bytes(_minorver)
 +    issigned = int.from_bytes(_issigned)
-+    _sign = None
-+    # if issigned:
-+        # pass
++    previous = 0
++    sign_len = None
++    sign_chunks = None
++    sign = None
++    if issigned == 11:
++        _sign_len = bytes.fromhex(dbdata[_issigned_i:_sign_len_i])
++        sign_len = int.from_bytes(_sign_len)
++        _sign_chunks = bytes.fromhex(dbdata[_sign_len_i:_sign_chunks_i])
++        sign_chunks = int.from_bytes(_sign_chunks)
++        _sign = bytes.fromhex(dbdata[_sign_chunks_i:_sign_chunk*sign_chunks+_sign_chunks_i])
++        sign = _sign.decode()
++        previous = _sign_chunks_i+sign_chunks*_sign_chunk
++    else:
++        previous = _issigned_i
++    _name_len_i = baseconfig.MAXHEXLEN + previous
++    _name_chunks_i = baseconfig.MAXNAMEHEXLEN + _name_len_i
++    _name_chunk = baseconfig.MAXHEXLEN
++    _name_len = bytes.fromhex(dbdata[previous:_name_len_i])
++    name_len = int.from_bytes(_name_len)
++    _name_chunks = bytes.fromhex(dbdata[_name_len_i:_name_chunks_i])
++    name_chunks = int.from_bytes(_name_chunks)
++    _name = bytes.fromhex(dbdata[_name_chunks_i:_name_chunk*name_chunks+_name_chunks_i])
++    name = _name.decode()
 +    print(f"Bytes: {sysbytes}", f"Majorver: {majorver}", f"Minorver: {minorver}", f"Is Signed: {issigned}", sep="\n")
-+
++    if issigned == 11:
++        print(f"Sign len: {sign_len}", f"Sign chunks: {sign_chunks}", f"Sign: {sign}" ,sep="\n")
++    print(f"Name len: {name_len}", f"Name chunks {name_chunks}", f"Name: {name}", sep="\n")
 +'''
 +# Comments
 +
