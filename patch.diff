@@ -21,18 +21,18 @@ index d63bc18..77f74b2 100644
 +from . import baseconfig
 diff --git a/customcmd-patch/core/baseconfig.py b/customcmd-patch/core/baseconfig.py
 new file mode 100644
-index 0000000..b3172e8
+index 0000000..7016f79
 --- /dev/null
 +++ b/customcmd-patch/core/baseconfig.py
 @@ -0,0 +1,13 @@
 +import sys
 +
-+SIGNED = 0x0001
-+UNSIGNED = 0x0000
-+MAJORVERSION = 0x0001
-+MINORVERSION = 0x0000
-+DIR = 0x0100
-+FILE = 0x0200
++SIGNED = 11
++UNSIGNED = 10
++MAJORVERSION = 1
++MINORVERSION = 0
++DIR = 32
++FILE = 16
 +_64BIT = sys.maxsize > 2 ** 32 - 1
 +MAXLEN = 2 ** 32 - 1 if not _64BIT else 2 ** 64 - 1
 +MAXNAMELEN = 2 ** 16 - 1
@@ -119,6 +119,23 @@ index ddf887a..65f67ad 100644
 +CAN_SIGN_DB = "db.all.sign.maybe"
 +PLEASE_SET_SIGN_DATA = "db.all.sign.text.action"
 +FEW_ARGS_FOR_CREATEDB = "error.command.db.create.fewargs"
+diff --git a/customcmd-original/tools/functions.py b/customcmd-patch/tools/functions.py
+index ef09a46..5f45833 100644
+--- a/customcmd-original/tools/functions.py
++++ b/customcmd-patch/tools/functions.py
+@@ -62,3 +62,12 @@ def write_to_file(path: str, text: str) -> None:
+         file.close()
+     except Exception as e:
+         info(f"{locale.get_by_token(tokens.FILE_WRITE_ERROR)} {e}", level='e')
++
++def removebefore(orig: str, tostrip: str) -> str:
++    newstring = ''
++    for x in range(len(orig)):
++        if not orig[x] == tostrip:
++            newstring = add_or_set_str(newstring, orig[x])
++        else:
++            break
++    return newstring
 diff --git a/customcmd-original/wrapper/commands/__init__.py b/customcmd-patch/wrapper/commands/__init__.py
 index fd1b873..1ebf12f 100644
 --- a/customcmd-original/wrapper/commands/__init__.py
@@ -129,10 +146,10 @@ index fd1b873..1ebf12f 100644
 +from . import dbcmd_mod
 diff --git a/customcmd-patch/wrapper/commands/dbcmd_mod.py b/customcmd-patch/wrapper/commands/dbcmd_mod.py
 new file mode 100644
-index 0000000..ff8ee67
+index 0000000..e7e2dc5
 --- /dev/null
 +++ b/customcmd-patch/wrapper/commands/dbcmd_mod.py
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,183 @@
 +import math
 +from ...tools import functions, pathutil
 +from ...locale import locale, tokens
@@ -241,41 +258,49 @@ index 0000000..ff8ee67
 +        return None
 +    dbdata = functions.add_or_set_str(dbdata, "64" if baseconfig._64BIT else "32") # Bit count
 +    # Add version data
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(baseconfig.MAJORVERSION).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN)) 
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(baseconfig.MINORVERSION).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.MAJORVERSION.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN)) 
++    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.MINORVERSION.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    # Signing
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(baseconfig.SIGNED).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else functions.add_to_string_with_nl(dbdata, str(baseconfig.UNSIGNED).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(s_len).encode().hex().zfill(baseconfig.MAXHEXLEN)) if sign != None else dbdata
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(math.ceil(s_len // baseconfig.MAXHEXLEN)).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else dbdata
++    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.SIGNED.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else functions.add_to_string_with_nl(dbdata, baseconfig.UNSIGNED.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, s_len.to_bytes().hex().zfill(baseconfig.MAXHEXLEN)) if sign != None else dbdata
++    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil(s_len // baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else dbdata
 +    dbdata = functions.add_to_string_with_nl(dbdata, "0"*(baseconfig.MAXHEXLEN - s_len % baseconfig.MAXHEXLEN) + sign) if sign != None else dbdata
 +    # Database name
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(n_len).encode().hex().zfill(baseconfig.MAXHEXLEN))
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(math.ceil(n_len // baseconfig.MAXHEXLEN)).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, n_len.to_bytes().hex().zfill(baseconfig.MAXHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil(n_len // baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    dbdata = functions.add_to_string_with_nl(dbdata, "0"*(baseconfig.MAXHEXLEN - n_len % baseconfig.MAXHEXLEN) + name)
 +    # Directory sign (! here always)
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(baseconfig.DIR).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.DIR.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    # Directory structure (See Comments)
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(len(root)).encode().hex().zfill(baseconfig.MAXHEXLEN))
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(math.ceil(len(root) // baseconfig.MAXHEXLEN)).encode().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, len(root).to_bytes().hex().zfill(baseconfig.MAXHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil(len(root) // baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    dbdata = functions.add_to_string_with_nl(dbdata, "0"*(baseconfig.MAXHEXLEN - len(root) % baseconfig.MAXHEXLEN) + root)
-+    dbdata = functions.add_to_string_with_nl(dbdata, str(0).encode().hex().zfill(baseconfig.MAXHEXLEN))
++    dbdata = functions.add_to_string_with_nl(dbdata, (0).to_bytes().hex().zfill(baseconfig.MAXHEXLEN))
 +    print(dbdata)
 +    return dbdata.replace("\n", "")
 +
 +def __parse(dbdata: str):
 +    if len(dbdata) < 252:
 +        return (None)
-+    sysbytes = int(dbdata[0:2])
-+    _majorver = dbdata[2:baseconfig.MAXNAMEHEXLEN+2]
-+    majorver = int(bytes.fromhex(_majorver).decode())
-+    _minorver = dbdata[baseconfig.MAXNAMEHEXLEN+2:baseconfig.MAXNAMEHEXLEN*2+2]
-+    minorver = int(bytes.fromhex(_minorver).decode())
-+    _issigned = dbdata[baseconfig.MAXNAMEHEXLEN*2+2:baseconfig.MAXNAMEHEXLEN*3+2]
-+    issigned = int(bytes.fromhex(_issigned).decode())
++    # Indexes
++    _sysbytes_i = 2
++    _majorver_i = baseconfig.MAXNAMEHEXLEN + _sysbytes_i
++    _minorver_i = baseconfig.MAXNAMEHEXLEN + _majorver_i
++    _issigned_i = baseconfig.MAXNAMEHEXLEN + _minorver_i
++    _sign_len_i = None
++    # Str variables
++    _sysbytes = dbdata[:_sysbytes_i]
++    _majorver = bytes.fromhex(dbdata[_sysbytes_i:_majorver_i])
++    _minorver = bytes.fromhex(dbdata[_majorver_i:_minorver_i])
++    _issigned = bytes.fromhex(dbdata[_minorver_i:_issigned_i])
++    sysbytes = int(_sysbytes)
++    majorver = int.from_bytes(_majorver)
++    minorver = int.from_bytes(_minorver)
++    issigned = int.from_bytes(_issigned)
 +    _sign = None
-+    if issigned:
-+        pass
-+    print(sysbytes, majorver, minorver, issigned)
++    # if issigned:
++        # pass
++    print(f"Bytes: {sysbytes}", f"Majorver: {majorver}", f"Minorver: {minorver}", f"Is Signed: {issigned}", sep="\n")
 +
 +'''
 +# Comments
