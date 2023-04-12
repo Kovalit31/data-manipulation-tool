@@ -1,13 +1,17 @@
 diff --git a/customcmd-original/__main__.py b/customcmd-patch/__main__.py
-index e1146cb..93dfde0 100644
+index e1146cb..53b588c 100644
 --- a/customcmd-original/__main__.py
 +++ b/customcmd-patch/__main__.py
-@@ -11,6 +11,8 @@ def main(args: list) -> None:
+@@ -11,6 +11,12 @@ def main(args: list) -> None:
      loader.load_module(wrapper.commands.unix_like.echo, 'echo')
      loader.load_module(wrapper.commands.unix_like.cd, 'cd')
      loader.load_module(wrapper.commands.unix_like.pwd, 'pwd')
 +    loader.load_module(wrapper.commands.dbcmd_mod.create_db, 'createdb')
 +    loader.load_module(wrapper.commands.dbcmd_mod.dbinfo, 'dbinfo')
++    loader.load_module(wrapper.commands.dbcmd_mod.dbtouch, 'dbtouch')
++    loader.load_module(wrapper.commands.dbcmd_mod.adddbkey, "adddbkey")
++    loader.load_module(wrapper.commands.dbcmd_mod.rmdbkey, "rmdbkey")
++    loader.load_module(wrapper.commands.dbcmd_mod.printdbkeys, "printdbkeys")
      loader.load_module(wrapper.commands.unix_like.exit, 'exit', after=core.config.SYSEXIT)
      loader.load_module(wrapper.commands.bash_like.exec, 'exec', after=core.config.LOADFILE, unpack_output=True)
      loader.load_module(wrapper.commands.bash_like.read, 'read', after=core.config.EXPORTVAR, unpack_output=True)
@@ -21,17 +25,18 @@ index d63bc18..77f74b2 100644
 +from . import baseconfig
 diff --git a/customcmd-patch/core/baseconfig.py b/customcmd-patch/core/baseconfig.py
 new file mode 100644
-index 0000000..7016f79
+index 0000000..755ad13
 --- /dev/null
 +++ b/customcmd-patch/core/baseconfig.py
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,14 @@
 +import sys
 +
 +SIGNED = 11
 +UNSIGNED = 10
 +MAJORVERSION = 1
 +MINORVERSION = 0
-+DIR = 32
++KEYVAR = 32
++KEYVAL = 48
 +FILE = 16
 +_64BIT = sys.maxsize > 2 ** 32 - 1
 +MAXLEN = 2 ** 32 - 1 if not _64BIT else 2 ** 64 - 1
@@ -39,7 +44,7 @@ index 0000000..7016f79
 +MAXNAMEHEXLEN = len(str(MAXNAMELEN).encode().hex())
 +MAXHEXLEN = len(str(MAXLEN).encode().hex())
 diff --git a/customcmd-original/core/config.py b/customcmd-patch/core/config.py
-index dfdb0f2..7f4d7d9 100644
+index 17d1c48..f63a897 100644
 --- a/customcmd-original/core/config.py
 +++ b/customcmd-patch/core/config.py
 @@ -15,8 +15,7 @@ EXPORTVAR = 5
@@ -146,10 +151,10 @@ index fd1b873..1ebf12f 100644
 +from . import dbcmd_mod
 diff --git a/customcmd-patch/wrapper/commands/dbcmd_mod.py b/customcmd-patch/wrapper/commands/dbcmd_mod.py
 new file mode 100644
-index 0000000..f951c38
+index 0000000..3d9cf51
 --- /dev/null
 +++ b/customcmd-patch/wrapper/commands/dbcmd_mod.py
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,501 @@
 +import math
 +from ...tools import functions, pathutil
 +from ...locale import locale, tokens
@@ -157,9 +162,7 @@ index 0000000..f951c38
 +
 +import os
 +
-+
-+
-+def create_db(args: list):
++def create_db(args: list) -> None:
 +    '''
 +    Create DB partitioning 
 +    @param args[0] - File
@@ -183,76 +186,151 @@ index 0000000..f951c38
 +                db_sign = functions.add_or_set_str(db_sign, input().strip().replace("\\", "\n"))
 +                if not db_sign.endswith("\n"):
 +                    break
-+    db_data = __create_dbdata(db_sign, db_name)
++    db_data = __create_head(db_sign, db_name)
 +    functions.write_to_file(path, db_data)
++
++def dbinfo(args: list) -> None:
++    '''
++    Read database partitioning from file args[-1]
++    '''
++    a = __one_args(args)
++    if a == None:
++        return
++    dbdata, _ = a
++    _, data, sign = __parse_head(dbdata)
++    _, files, _ = __parse_data(dbdata)
++    print(f"Bytes: {data[0]}", f"Majorver: {data[1]}", f"Minorver: {data[2]}", f"Is Signed: {data[3]}", sep="\n")
++    if data[3]:
++        print(f"Sign chunks: {sign[0]}", f"Sign: {sign[1]}" ,sep="\n")
++    print(f"Name chunks {data[4]}", f"Name: {data[5]}", sep="\n")
++    print(f"File total count: {len(files)}", sep="\n")
++
++def adddbkey(args: list) -> None:
++    a = __four_args(args)
++    if a == None:
++        return
++    dbdata, _variable, _value, dbfile, _file = a
++    realfile = __find_file_by_name(dbdata, dbfile)
++    if realfile == None:
++        functions.info("Error adding key {}: file {} not exists!".format(_variable, dbfile))
++        return
++    variable = _variable.encode().hex()
++    value = _value.encode().hex()
++    keydata = ""
++    # Key sign
++    dbdatanew = functions.add_or_set_str(keydata, baseconfig.KEYVAR.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    # Key structure (See Comments)
++    dbdatanew = functions.add_to_string_with_nl(dbdatanew, math.ceil(len(variable) / baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdatanew = functions.add_to_string_with_nl(dbdatanew, "0"*(baseconfig.MAXHEXLEN - len(variable) % baseconfig.MAXHEXLEN) + variable)
++    # Value
++    dbdatanew = functions.add_to_string_with_nl(dbdatanew, baseconfig.KEYVAL.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdatanew = functions.add_to_string_with_nl(dbdatanew, math.ceil(len(value) / baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdatanew = functions.add_to_string_with_nl(dbdatanew, "0"*(baseconfig.MAXHEXLEN - len(value) % baseconfig.MAXHEXLEN) + value)
++    i, _ = __file_parse(dbdata, realfile)
++    dbdata_part, after_data = __split(dbdata, i)
++    newdbdata = dbdata_part + dbdatanew + after_data
++    functions.write_to_file(_file, newdbdata.replace("\n", ""))
++
++# def editdbkey(args: list) -> None:
++#     '''
++#     file dbfile key
++#     '''
++#     a = __three_args(args)
++#     if a == None:
++#         return
++#     dbdata, key, dbfile, _file = a
++#     # 1st step: save data
++#     filesign = __find_file_by_name(_file)
++#     if filesign == None:
++#         functions.info("", level="e")
++#         return
++#     keys, hkeys = __get_keys_from_file()
 +    
-+def load_db():
-+    pass
-+
-+def unload_db():
-+    pass
-+
-+def print_db():
-+    pass
-+
-+def remove_db():
-+    pass
-+
-+# keys 
-+
-+# def add_key():
-+#     pass
-+
-+# def remove_key():
-+#     pass
-+
-+# def edit_key():
-+#     pass
-+
-+# def print_key():
-+#     pass
-+
-+def dbls():
-+    pass
-+
-+def rmdbkey():
-+    pass
-+
-+def rmdbdir():
-+    pass
-+
-+def dbcd():
-+    pass
-+
-+def mkdbdir():
-+    pass
-+
-+def adddbkey():
-+    pass
-+
-+def dbinfo(args: list):
-+    if functions.return_if_few(args, 1, msg=tokens.FEW_ARGS_FOR_CREATEDB):
++def printdbkeys(args: list) -> None:
++    '''
++    file
++    '''
++    a = __one_args(args)
++    if a == None:
++        functions.info("")
 +        return
-+    path = pathutil.is_file_throw(args[0])
-+    if path == None:
-+        functions.info("", level='e')
-+        return
-+    dbdata = ''
-+    try:
-+        file = open(path, 'r', encoding='utf-8')
-+        dbdata = file.readlines()[0]
-+        file.close()
-+    except:
-+        return
-+    __parse(dbdata)
++    dbdata, _ = a
++    _, _, keys = __parse_data(dbdata)
++    humanized = __humanize_file_keys(dbdata, keys)
++    for x in range(len(humanized)):
++        print(f"File: {humanized[x][0]}")
++        if len(humanized[x][1]) == 0:
++            print("     No keys found")
++            continue
++        for y in range(len(humanized[x][1])):
++            print(f"    Key: {humanized[x][1][y][0]}")
++            print(f"    Values:")
++            if len(humanized[x][1][y][1]) == 0:
++                print("         No values")
++                continue
++            for z in range(len(humanized[x][1][y][1])):
++                print(f"        {z}: {humanized[x][1][y][1][z]}")
++    
++# def findkey(args: list) -> None:
++#     pass
 +
-+def __create_dbdata(s: str, n: str):
++def addvalue(args: list) -> None:
++    '''
++    file dbfile key value
++    '''
++    a = __four_args(args)
++    if a == None:
++        return
++    dbdata, _value, _variable, _dbfile, _file = a
++
++def rmdbkey(args: list) -> None:
++    a = __three_args(args)
++    if a == None:
++        return
++    dbdata, key, dbfile, _file = a
++    filesign = __find_file_by_name(dbdata, dbfile)
++    if filesign == None:
++        functions.info("", level="e")
++        return
++    keys, keyh = __get_keys_from_file(dbdata, filesign)
++    keysign = __get_key_from_keys(keys, keyh, key)
++    keyend, _, _ = __parse_data(dbdata, keysign, return_only_keys=True)
++    _dbdata = __remove_from_indexes(dbdata, keysign, keyend)
++    functions.write_to_file(_file, _dbdata)
++
++def dbtouch(args: list) -> None:
++    a = __two_args(args)
++    if a == None:
++        return
++    dbdata, p, file_path = a
++    last_i, _, _ = __parse_data(dbdata)
++    dbdata_new = _touchfile(dbdata, p, last_i)
++    if dbdata_new == None:
++        return
++    functions.write_to_file(file_path, dbdata_new)
++
++def _touchfile(_dbdata: str, filea: str, last_index: int) -> str:
++    a = __find_file_by_name(_dbdata, filea)
++    if a != None:
++        functions.info("File exists!")
++        return
++    filen = filea.encode().hex()
++    # File sign (! here always)
++    dbdata, after = __split(_dbdata, last_index)
++    _n = ""
++    dbdatanew = functions.add_or_set_str(_n, baseconfig.FILE.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    # File structure (See Comments)
++    dbdatanew = functions.add_to_string_with_nl(dbdatanew, math.ceil(len(filen) / baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
++    dbdatanew = functions.add_to_string_with_nl(dbdatanew, "0"*(baseconfig.MAXHEXLEN - len(filen) % baseconfig.MAXHEXLEN) + filen)
++    dbdatanew = functions.add_to_string_with_nl(dbdatanew, (0).to_bytes().hex().zfill(baseconfig.MAXHEXLEN))
++    return dbdata + dbdatanew.replace("\n", "") + after
++
++def __create_head(s: str, n: str) -> str:
 +    dbdata = ""
 +    sign = s.encode().hex() if s != "" and s != None and s.strip() != "" else None
 +    name = n.encode().hex()
 +    s_len = len(sign) if sign != None else 0
 +    n_len = len(name)
-+    root = ".".encode().hex()
 +    if s_len > baseconfig.MAXLEN or n_len > baseconfig.MAXNAMELEN:
 +        functions.info('', level='e')
 +        return None
@@ -262,25 +340,94 @@ index 0000000..f951c38
 +    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.MINORVERSION.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    # Signing
 +    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.SIGNED.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else functions.add_to_string_with_nl(dbdata, baseconfig.UNSIGNED.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
-+    dbdata = functions.add_to_string_with_nl(dbdata, s_len.to_bytes().hex().zfill(baseconfig.MAXHEXLEN)) if sign != None else dbdata
 +    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil((s_len + baseconfig.MAXHEXLEN - s_len % baseconfig.MAXHEXLEN) / baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN)) if sign != None else dbdata
 +    dbdata = functions.add_to_string_with_nl(dbdata, "0"*(baseconfig.MAXHEXLEN - s_len % baseconfig.MAXHEXLEN) + sign) if sign != None else dbdata
 +    # Database name
-+    dbdata = functions.add_to_string_with_nl(dbdata, n_len.to_bytes().hex().zfill(baseconfig.MAXHEXLEN))
 +    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil((n_len + baseconfig.MAXHEXLEN - n_len % baseconfig.MAXHEXLEN) / baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    dbdata = functions.add_to_string_with_nl(dbdata, "0"*(baseconfig.MAXHEXLEN - n_len % baseconfig.MAXHEXLEN) + name)
-+    # Directory sign (! here always)
-+    dbdata = functions.add_to_string_with_nl(dbdata, baseconfig.DIR.to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
-+    # Directory structure (See Comments)
-+    dbdata = functions.add_to_string_with_nl(dbdata, len(root).to_bytes().hex().zfill(baseconfig.MAXHEXLEN))
-+    dbdata = functions.add_to_string_with_nl(dbdata, math.ceil(len(root) // baseconfig.MAXHEXLEN).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
-+    dbdata = functions.add_to_string_with_nl(dbdata, "0"*(baseconfig.MAXHEXLEN - len(root) % baseconfig.MAXHEXLEN) + root)
-+    dbdata = functions.add_to_string_with_nl(dbdata, (0).to_bytes().hex().zfill(baseconfig.MAXHEXLEN))
-+    print(dbdata)
++    # dbdata = _mkdir(dbdata, ".")
++    dbdata = functions.add_to_string_with_nl(dbdata, (0).to_bytes().hex().zfill(baseconfig.MAXNAMEHEXLEN))
 +    return dbdata.replace("\n", "")
 +
-+def __parse(dbdata: str):
-+    if len(dbdata) < 252:
++def __split(dbdata: str, index: int) -> tuple[str, str]:
++    if len(dbdata) < index:
++        return dbdata, ""
++    return dbdata[:index], dbdata[index:]
++
++def ___get_names_by_signs(dbdata: str, signs: list) -> list:
++    names = []
++    for x in range(len(signs)):
++        _, filedata = __file_parse(dbdata, signs[x])
++        names.append(filedata[0])
++    return names
++
++def __remove_from_indexes(dbdata: str, start: int, end: int) -> str:
++    before = dbdata[:start]
++    after = dbdata[end:]
++    return before+after
++
++def __get_keys_from_file(dbdata: str, filesign: int) -> tuple[list, list]:
++    _, _, data = __parse_data(dbdata)
++    humanized = __humanize_file_keys(dbdata, data)
++    if len(data) == 0:
++        return [], []
++    for x in range(len(data)):
++        if data[x][0] == filesign:
++            return data[x][1:], humanized[x][1:]
++    else:
++        return [], []
++
++def __get_key_from_keys(keys: list, keys_humanized: list, key: str) -> int:
++    for x in range(len(keys_humanized)):
++        for y in range(len(keys_humanized[x])):
++            if keys_humanized[x][y][0] == key:
++                return keys[x][y][0]
++    else:
++        return None
++
++def __find_file_by_name(dbdata: str, filename: str) -> int:
++    _, file_signs, _ = __parse_data(dbdata)
++    file_names = ___get_names_by_signs(dbdata, file_signs)
++    for x in range(len(file_names)):
++        if file_names[x] == filename:
++            return file_signs[x]
++    else:
++        return None
++
++# def __find_file_by_sign(dbdata: str, filesign: int) -> tuple[str, int]:
++#     _, file_signs, _ = __parse_data(dbdata)
++#     for x in range(len(file_signs)):
++#         if file_signs[x] == filesign:
++#             _, data = __file_parse(dbdata, filesign)
++#             return data[0], filesign
++#     else:
++#         return None, None
++
++def __humanize_file_keys(dbdata: str, data: list) -> list:
++    output = []
++    if len(data) == 0:
++        return []
++    for x in range(len(data)):
++        output.append([])
++        _, filedata = __file_parse(dbdata, data[x][0])
++        output[-1].append(filedata[0])
++        output[-1].append([])
++        if len(data[x][1]) == 0:
++            continue
++        for y in range(len(data[x][1])):
++            output[-1][-1].append([]) #data[x][1][y]
++            _, kvardata = __kvar_parse(dbdata, data[x][1][y][0])
++            output[-1][-1][-1].append(kvardata[0])
++            output[-1][-1][-1].append([])
++            if len(data[x][1][y][1]) == 0:
++                continue
++            for z in range(len(data[x][1][y][1])):
++                _, kvaldata = __kval_parse(dbdata, data[x][1][y][1][z])
++                output[-1][-1][-1][-1].append(kvaldata[0])
++    return output
++
++def __parse_head(dbdata: str) -> tuple[int, list, list]:
++    if len(dbdata) < 92:
 +        return (None)
 +    # Indexes
 +    _sysbytes_i = 2
@@ -288,8 +435,7 @@ index 0000000..f951c38
 +    _minorver_i = baseconfig.MAXNAMEHEXLEN + _majorver_i
 +    _issigned_i = baseconfig.MAXNAMEHEXLEN + _minorver_i
 +    # If is signed
-+    _sign_len_i = baseconfig.MAXHEXLEN + _issigned_i
-+    _sign_chunks_i = baseconfig.MAXNAMEHEXLEN + _sign_len_i
++    _sign_chunks_i = baseconfig.MAXNAMEHEXLEN + _issigned_i
 +    _sign_chunk = baseconfig.MAXHEXLEN
 +    # Str variables
 +    _sysbytes = dbdata[:_sysbytes_i]
@@ -301,59 +447,211 @@ index 0000000..f951c38
 +    minorver = int.from_bytes(_minorver)
 +    issigned = int.from_bytes(_issigned)
 +    previous = 0
-+    sign_len = None
 +    sign_chunks = None
 +    sign = None
 +    if issigned == 11:
-+        _sign_len = bytes.fromhex(dbdata[_issigned_i:_sign_len_i])
-+        sign_len = int.from_bytes(_sign_len)
-+        _sign_chunks = bytes.fromhex(dbdata[_sign_len_i:_sign_chunks_i])
++        _sign_chunks = bytes.fromhex(dbdata[_issigned_i:_sign_chunks_i])
 +        sign_chunks = int.from_bytes(_sign_chunks)
-+        _sign = bytes.fromhex(dbdata[_sign_chunks_i:_sign_chunk*sign_chunks+_sign_chunks_i])
++        _sign_i = _sign_chunk*sign_chunks+_sign_chunks_i
++        _sign = bytes.fromhex(dbdata[_sign_chunks_i:_sign_i])
 +        sign = _sign.decode()
 +        previous = _sign_chunks_i+sign_chunks*_sign_chunk
 +    else:
 +        previous = _issigned_i
-+    _name_len_i = baseconfig.MAXHEXLEN + previous
-+    _name_chunks_i = baseconfig.MAXNAMEHEXLEN + _name_len_i
++    _name_chunks_i = baseconfig.MAXNAMEHEXLEN + previous
 +    _name_chunk = baseconfig.MAXHEXLEN
-+    _name_len = bytes.fromhex(dbdata[previous:_name_len_i])
-+    name_len = int.from_bytes(_name_len)
-+    _name_chunks = bytes.fromhex(dbdata[_name_len_i:_name_chunks_i])
++    _name_chunks = bytes.fromhex(dbdata[previous:_name_chunks_i])
 +    name_chunks = int.from_bytes(_name_chunks)
-+    _name = bytes.fromhex(dbdata[_name_chunks_i:_name_chunk*name_chunks+_name_chunks_i])
++    _name_i = _name_chunk*name_chunks+_name_chunks_i
++    _name = bytes.fromhex(dbdata[_name_chunks_i:_name_i])
 +    name = _name.decode()
-+    print(f"Bytes: {sysbytes}", f"Majorver: {majorver}", f"Minorver: {minorver}", f"Is Signed: {issigned}", sep="\n")
-+    if issigned == 11:
-+        print(f"Sign len: {sign_len}", f"Sign chunks: {sign_chunks}", f"Sign: {sign}" ,sep="\n")
-+    print(f"Name len: {name_len}", f"Name chunks {name_chunks}", f"Name: {name}", sep="\n")
++    return _name_i, [sysbytes, majorver, minorver, True if issigned == baseconfig.SIGNED else False, name_chunks, name.strip("\x00")], [sign_chunks, sign.strip("\x00")] if sign != None else []
++
++def __parse_data(dbdata: str, start_i=None, return_only_keys=False) -> tuple[list, list]:
++    start = start_i
++    if start == None:
++        start, _, _ = __parse_head(dbdata)
++    files_signs = []
++    keys = []
++    # dirs_signs = []
++    # It need's to start from signature (MAXHEXNAMELEN)
++    current_pos = start
++    in_file = False
++    havevar = False
++    while True:
++        _sign = bytes.fromhex(dbdata[current_pos:current_pos+baseconfig.MAXNAMEHEXLEN])
++        sign = int.from_bytes(_sign)
++        if sign == baseconfig.FILE:
++            if return_only_keys:
++                break
++            in_file = True
++            files_signs.append(current_pos)
++            keys.append([current_pos])
++            keys[-1].append([])
++            current_pos, _ = __file_parse(dbdata, current_pos)
++        elif sign == baseconfig.KEYVAR:
++            if havevar and return_only_keys:
++                break
++            if return_only_keys:
++                keys.append([[]])
++            keys[-1][-1].append([])
++            keys[-1][-1][-1].append(current_pos)
++            keys[-1][-1][-1].append([])  
++            key_pos, _ = __kvar_parse(dbdata, current_pos)
++            current_pos = key_pos
++            havevar = True
++        elif sign == baseconfig.KEYVAL:
++            keys[-1][-1][-1][-1].append(current_pos)
++            key_pos, _ = __kval_parse(dbdata, current_pos)
++            current_pos = key_pos
++        elif sign == 0:
++            if not in_file:
++                break
++            elif return_only_keys:
++                break
++            else:
++                in_file = False
++        else:
++            functions.info(f"Oops! PANIC: Signing error at {current_pos}", level="f")
++    return current_pos, files_signs, keys
++
++def __file_parse(dbdata: str, start: int) -> tuple[int, list]:
++    _sign_i = start + baseconfig.MAXNAMEHEXLEN
++    _file_name_chunks_i = _sign_i + baseconfig.MAXNAMEHEXLEN
++    _file_name_chunk = baseconfig.MAXHEXLEN
++    _file_name_chunks = bytes.fromhex(dbdata[_sign_i:_file_name_chunks_i])
++    file_name_chunks = int.from_bytes(_file_name_chunks)
++    _file_name_i = _file_name_chunks_i+_file_name_chunk*file_name_chunks
++    _file_name = bytes.fromhex(dbdata[_file_name_chunks_i:_file_name_chunks_i+_file_name_chunk*file_name_chunks])
++    file_name = _file_name.decode()
++    return _file_name_i, [file_name.strip("\x00"), file_name_chunks, _file_name_i, _file_name_chunks_i, _sign_i, start]
++
++def __kvar_parse(dbdata: str, start: int) -> tuple[list, dict]:
++    _sign_i = start + baseconfig.MAXNAMEHEXLEN
++    _key_var_chunks_i = _sign_i + baseconfig.MAXNAMEHEXLEN
++    _key_var_chunk = baseconfig.MAXHEXLEN
++    _key_var_chunks = bytes.fromhex(dbdata[_sign_i:_key_var_chunks_i])
++    key_var_chunks = int.from_bytes(_key_var_chunks)
++    _key_var_i = _key_var_chunks_i+_key_var_chunk*key_var_chunks
++    _key_var = bytes.fromhex(dbdata[_key_var_chunks_i:_key_var_i])
++    key_var = _key_var.decode()
++    return _key_var_i, [key_var.strip("\x00"), key_var_chunks, _key_var_chunks_i, _key_var_i, start]
++
++def __kval_parse(dbdata: str, start: int) -> tuple[int, list]:
++    _sign_i = start + baseconfig.MAXNAMEHEXLEN
++    _key_val_chunks_i = _sign_i + baseconfig.MAXNAMEHEXLEN
++    _key_val_chunk = baseconfig.MAXHEXLEN
++    _key_val_chunks = bytes.fromhex(dbdata[_sign_i:_key_val_chunks_i])
++    key_val_chunks = int.from_bytes(_key_val_chunks)
++    _key_val_i = _key_val_chunks_i+_key_val_chunk*key_val_chunks
++    _key_val = bytes.fromhex(dbdata[_key_val_chunks_i:_key_val_i])
++    key_val = _key_val.decode()
++    return _key_val_i, [key_val.strip("\x00"), key_val_chunks, _key_val_chunks_i, _key_val_i, _sign_i, start]
++
++def __one_args(args: list) -> tuple[str, str]:
++    if functions.return_if_few(args, 1, msg=tokens.FEW_ARGS_ALL):
++        return
++    f = args[-1]
++    file_path = pathutil.is_file_throw(f)
++    if file_path == None:
++        functions.info("", level='e')
++        return
++    dbdata = ''
++    try:
++        file = open(f, 'r', encoding='utf-8')
++        dbdata = file.readlines()[0]
++        file.close()
++    except:
++        return
++    return (dbdata, file_path)
++
++def __two_args(args: list) -> tuple[str, str, str]:
++    if functions.return_if_few(args, 2, msg=tokens.FEW_ARGS_ALL):
++        return
++    p = args[-1]
++    f = args[-2]
++    file_path = pathutil.is_file_throw(f)
++    if file_path == None:
++        functions.info("", level='e')
++        return
++    dbdata = ''
++    try:
++        file = open(f, 'r', encoding='utf-8')
++        dbdata = file.readlines()[0]
++        file.close()
++    except:
++        return
++    return (dbdata, p, file_path)
++
++def __three_args(args: list) -> tuple[str, str, str, str]:
++    if functions.return_if_few(args, 3, msg=tokens.FEW_ARGS_ALL):
++        return
++    s = args[-1]
++    p = args[-2]
++    f = args[-3]
++    file_path = pathutil.is_file_throw(f)
++    if file_path == None:
++        functions.info("", level='e')
++        return
++    dbdata = ''
++    try:
++        file = open(f, 'r', encoding='utf-8')
++        dbdata = file.readlines()[0]
++        file.close()
++    except:
++        return
++    return (dbdata, s, p, file_path)
++
++def __four_args(args: list) -> tuple[str, str, str, str, str]:
++    if functions.return_if_few(args, 4, msg=tokens.FEW_ARGS_ALL):
++        return
++    s = args[-2]
++    v = args[-1]
++    d = args[-3]
++    f = args[-4]
++    file_path = pathutil.is_file_throw(f)
++    if file_path == None:
++        functions.info("", level='e')
++        return
++    dbdata = ''
++    try:
++        file = open(f, 'r', encoding='utf-8')
++        dbdata = file.readlines()[0]
++        file.close()
++    except:
++        return
++    return (dbdata, s, v, d, file_path)
++
 +'''
 +# Comments
 +
 +## Data base structure
 +
-+bits
-+version
++bits - 64 or 32
++version - 1.0
 +s/u - signed/unsigned
 +if s, Sign len
 +if s, sign
-+name len
++db name chunks
 +db name
-+0x0001
-+.
-+num of files/dirs
-+d/f (dir/file)
-+
-+name len    -|
-+lol.keys    -|
-+num of keys -| file
++# d (d/f)
++# .
++# num of files/dirs
++# d/f (dir/file)
++f
++name chunks -|
++name        -|
++# num of keys -| file
 +keylen      -|
 +key         -|
++valuelen    -|
++value       -|
++0x000000    -|
 +
-+d/f (dir/file)
-+name len          -|
-+users             -| 
-+num of files/dirs -| dirs
++# d/f (dir/file)
++# name len          -|
++# name              -| 
++# num of files/dirs -| dirs
 +...
 +0x0000 # Dbend
 +'''
@@ -370,3 +668,15 @@ index 2ec9e6b..aa473e2 100644
              code = _ret[0] if not type(_ret) == int else _ret
              other = _ret[1:] if type(_ret) != int and len(_ret) > 1 else []
              if code == config.SYSEXIT and not in_command:
+diff --git a/customcmd-original/wrapper/wrap.py b/customcmd-patch/wrapper/wrap.py
+index 7416afc..86c5c3f 100644
+--- a/customcmd-original/wrapper/wrap.py
++++ b/customcmd-patch/wrapper/wrap.py
+@@ -14,5 +14,5 @@ def exec(function: types.FunctionType, return_code: int, fnreturns_code=False, _
+         return _final
+     except KeyboardInterrupt or EOFError:
+         return config.SYSEXIT
+-    except Exception as e:
+-        return config.CONTINUE, e
++    # except Exception as e: # DEBUG unloadable feature
++    #     return config.CONTINUE, e
